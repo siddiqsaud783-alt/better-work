@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Ollama Assistant with Voice and Gemini</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for chat history */
+        #chat-history::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-history::-webkit-scrollbar-thumb {
+            background-color: #9ca3af;
+            border-radius: 4px;
+        }
+        #chat-history::-webkit-scrollbar-track {
+            background-color: #1f2937;
+        }
+        /* Glassmorphism panel styling */
+        .glass-panel {
+            background-color: rgba(31, 41, 55, 0.8); /* gray-800 with transparency */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(75, 85, 99, 0.5); /* gray-600 border */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-xl shadow-2xl p-6 flex flex-col h-[90vh]">
+        
+        <!-- Header with Title and Settings Icon -->
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-3xl font-bold text-emerald-400">Local AI Assistant with Voice & Search</h1>
+            <button id="settings-icon" class="text-gray-400 hover:text-emerald-400 transition duration-200 p-2 rounded-full hover:bg-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.78 1.12a2 2 0 0 0 .73 2.73l.15.08a2 2 0 0 1 1 1.73v.56a2 2 0 0 1-1 1.73l-.15.08a2 2 0 0 0-.73 2.73l.78 1.12a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.78-1.12a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.73v-.56a2 2 0 0 1 1-1.73l-.15-.08a2 2 0 0 0 .73-2.73l-.78-1.12a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+        </div>
+        
+        <!-- Chat History -->
+        <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 p-4 mb-4 bg-gray-700 rounded-lg border border-gray-600">
+            <!-- Messages will be appended here -->
+            <div class="flex justify-start">
+                <div class="bg-emerald-600/20 text-emerald-300 p-3 rounded-xl rounded-bl-sm max-w-3/4 shadow-md">
+                    **Welcome!** My voice is now updated to a clear, informative tone. I will start speaking immediately after I finish typing the response.
+                </div>
+            </div>
+        </div>
+
+        <!-- User Input -->
+        <div class="flex flex-col sm:flex-row items-stretch gap-3">
+            <textarea id="user-input" rows="1" class="flex-1 p-3 bg-gray-700 border border-gray-600 rounded-xl resize-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="Type your message here..."></textarea>
+            <div class="flex gap-3">
+                 <button id="grounded-search-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-lg flex items-center justify-center disabled:opacity-50 text-sm whitespace-nowrap" disabled>
+                    ✨ Grounded Answer
+                </button>
+                <button id="send-button" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl transition duration-200 shadow-lg flex items-center justify-center disabled:opacity-50" disabled>
+                    <svg id="send-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    <svg id="loading-spinner" class="animate-spin h-6 w-6 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div id="error-message" class="text-red-400 mt-2 text-sm hidden font-bold"></div>
+    </div>
+
+    <!-- Settings Modal (Glassmorphism Effect) -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-600 pb-3">
+                <h2 class="text-2xl font-semibold text-white">Assistant Settings</h2>
+                <button id="close-settings-button" class="text-gray-400 hover:text-red-400 p-1 rounded-full hover:bg-gray-700 transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Configuration and Status -->
+            <div class="space-y-4">
+                <h3 class="text-xl font-medium text-gray-300">Model & Connection</h3>
+                
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <label for="model-select-modal" class="block text-sm font-medium text-gray-300 mb-1">Select Model (must be installed)</label>
+                        <input type="text" id="model-select-modal" value="phi3" class="w-full p-2 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 text-sm" placeholder="e.g., llama3, mistral, phi3">
+                    </div>
+                    <div class="flex-1">
+                        <label for="ollama-url-modal" class="block text-sm font-medium text-gray-300 mb-1">Ollama API URL</label>
+                        <input type="text" id="ollama-url-modal" value="http://localhost:11434" class="w-full p-2 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 text-sm" disabled>
+                    </div>
+                </div>
+
+                <!-- System Prompt / Persona Setting -->
+                <h3 class="text-xl font-medium text-gray-300 pt-4">AI Persona (System Prompt)</h3>
+                <textarea id="system-prompt-modal" rows="5" class="w-full p-3 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 text-gray-100" placeholder="e.g., You are a helpful, enthusiastic, and slightly poetic guide named 'Bard.' You always use contractions and end your replies with a relevant, inspiring quote."></textarea>
+                <p class="text-sm text-gray-400 mt-1">This instruction dictates how your AI assistant will respond to all queries.</p>
+            </div>
+            
+            <div class="mt-6 flex justify-end">
+                <button id="save-settings-button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    Save and Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- API Keys and Endpoints ---
+        const apiKey = ""; // API key is provided at runtime by the environment
+        const ttsApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+        const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        
+        // --- TTS Voice Configuration (Jarvis-like: Charon) ---
+        const TTS_VOICE = "Charon"; // Switched to Charon for Informative/Clear tone
+
+        // --- DOM Elements ---
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const groundedSearchButton = document.getElementById('grounded-search-button');
+        const errorMessage = document.getElementById('error-message');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const sendIcon = document.getElementById('send-icon');
+        
+        // Settings elements
+        const settingsIcon = document.getElementById('settings-icon');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsButton = document.getElementById('close-settings-button');
+        const saveSettingsButton = document.getElementById('save-settings-button');
+        
+        // Modal Input Elements
+        const modelSelectModal = document.getElementById('model-select-modal');
+        const ollamaUrlModal = document.getElementById('ollama-url-modal');
+        const systemPromptModal = document.getElementById('system-prompt-modal');
+        
+        // Global variables
+        let currentConfig = {
+            model: modelSelectModal.value,
+            url: ollamaUrlModal.value,
+            systemPrompt: systemPromptModal.value
+        };
+
+        let isStreaming = false;
+        let audio = null; // Global audio element for playback control
+
+
+        // --- Utility Functions ---
+
+        // Function to convert Base64 string to ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Function to convert PCM audio data (Int16Array) to a WAV Blob
+        function pcmToWav(pcm16, sampleRate = 16000) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+            const blockAlign = numChannels * (bitsPerSample / 8);
+            const dataSize = pcm16.byteLength;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            
+            function writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+
+            // RIFF chunk
+            writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + dataSize, true);
+            writeString(view, 8, 'WAVE');
+            
+            // fmt chunk
+            writeString(view, 12, 'fmt '); view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bitsPerSample, true);
+            
+            // data chunk
+            writeString(view, 36, 'data'); view.setUint32(40, dataSize, true);
+
+            // Write PCM data
+            let offset = 44;
+            for (let i = 0; i < pcm16.length; i++) {
+                view.setInt16(offset, pcm16[i], true);
+                offset += 2;
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+        
+        function showLoading(show, targetButton = sendButton) {
+            isStreaming = show;
+            
+            // Update all action buttons based on streaming state
+            const allActionButtons = [sendButton, groundedSearchButton];
+            for (const btn of allActionButtons) {
+                btn.disabled = show || userInput.value.trim() === '';
+            }
+
+            if (targetButton === sendButton) {
+                loadingSpinner.classList.toggle('hidden', !show);
+                sendIcon.classList.toggle('hidden', show);
+            } else if (targetButton === groundedSearchButton) {
+                targetButton.innerHTML = show 
+                    ? '<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>'
+                    : '✨ Grounded Answer';
+            }
+            
+            errorMessage.classList.add('hidden');
+        }
+
+
+        // --- Settings Modal Handlers ---
+
+        function updateGlobalConfig() {
+            currentConfig.model = modelSelectModal.value.trim();
+            currentConfig.url = ollamaUrlModal.value.trim();
+            currentConfig.systemPrompt = systemPromptModal.value.trim();
+            toggleSettingsModal(false);
+        }
+
+        function toggleSettingsModal(show) {
+            if (show) {
+                modelSelectModal.value = currentConfig.model;
+                ollamaUrlModal.value = currentConfig.url;
+                systemPromptModal.value = currentConfig.systemPrompt;
+                settingsModal.classList.remove('hidden');
+            } else {
+                settingsModal.classList.add('hidden');
+            }
+        }
+
+        settingsIcon.addEventListener('click', () => toggleSettingsModal(true));
+        closeSettingsButton.addEventListener('click', () => toggleSettingsModal(false));
+        saveSettingsButton.addEventListener('click', updateGlobalConfig);
+        
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                toggleSettingsModal(false); 
+            }
+        });
+
+
+        // --- Message Appending ---
+
+        function appendMessage(role, content, type = 'ollama') {
+            const messageContainer = document.createElement('div');
+            const messageWrapper = document.createElement('div');
+            
+            if (role === 'user') {
+                messageContainer.className = 'flex justify-end';
+                messageWrapper.className = 'bg-emerald-700/50 p-3 rounded-xl rounded-br-sm max-w-3/4 shadow-md whitespace-pre-wrap';
+                messageWrapper.textContent = content;
+                messageContainer.appendChild(messageWrapper);
+            } else if (role === 'assistant') {
+                messageContainer.className = 'flex justify-start items-start gap-2';
+                
+                // 1. Action Buttons Container
+                const actionButtons = document.createElement('div');
+                actionButtons.className = 'flex flex-col gap-1 items-start pt-2';
+
+                // 2. TTS Speak Button
+                const speakButton = document.createElement('button');
+                speakButton.className = 'text-lg text-emerald-400 p-2 rounded-full hover:bg-gray-600 transition duration-150 speak-button disabled:opacity-50';
+                speakButton.textContent = '🔊';
+                speakButton.title = 'Read aloud (Text-to-Speech)';
+                speakButton.disabled = true;
+                actionButtons.appendChild(speakButton);
+                
+                // 3. Summarize Button (NEW FEATURE)
+                const summarizeButton = document.createElement('button');
+                summarizeButton.className = 'text-lg text-yellow-400 p-2 rounded-full hover:bg-gray-600 transition duration-150 summarize-button disabled:opacity-50';
+                summarizeButton.textContent = '✨';
+                summarizeButton.title = 'Summarize Response (Gemini)';
+                summarizeButton.disabled = true;
+                actionButtons.appendChild(summarizeButton);
+
+                // 4. Message Bubble
+                let bgColor = 'bg-gray-700/50';
+                if (type === 'gemini-grounded') {
+                    bgColor = 'bg-blue-700/50';
+                    const header = document.createElement('p');
+                    header.className = 'text-blue-200 text-xs font-semibold mb-2 border-b border-blue-500/50 pb-1';
+                    header.textContent = '✨ Grounded Answer (Gemini & Google Search)';
+                    messageWrapper.appendChild(header);
+                    messageWrapper.appendChild(document.createElement('span')); // Placeholder for text
+                }
+
+                messageWrapper.className = `${bgColor} p-3 rounded-xl rounded-bl-sm max-w-[calc(100%-4rem)] shadow-md whitespace-pre-wrap`;
+                if (type === 'ollama') {
+                     messageWrapper.textContent = content;
+                }
+               
+                // Append
+                messageContainer.appendChild(actionButtons);
+                messageContainer.appendChild(messageWrapper);
+
+                chatHistory.appendChild(messageContainer);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                
+                return { bubble: messageWrapper, speakButton, summarizeButton };
+            } else if (role === 'system') {
+                messageContainer.className = 'flex justify-center';
+                messageWrapper.className = 'text-xs text-gray-400 italic p-1 rounded-lg max-w-3/4 text-center';
+                messageWrapper.textContent = content;
+                messageContainer.appendChild(messageWrapper);
+            } else if (role === 'citation') {
+                messageContainer.className = 'flex justify-end max-w-[calc(100%-2rem)] ml-auto';
+                messageWrapper.className = 'bg-gray-700/50 text-xs text-gray-400 italic p-2 rounded-lg mt-1 shadow-inner';
+                messageWrapper.innerHTML = content;
+                messageContainer.appendChild(messageWrapper);
+            }
+
+
+            chatHistory.appendChild(messageContainer);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return { bubble: messageWrapper };
+        }
+
+
+        // --- Gemini API Call Functions ---
+
+        async function synthesizeSpeech(text, speakButton) {
+            // Stop any currently playing audio
+            if (audio) { audio.pause(); audio = null; }
+            speakButton.disabled = true;
+            
+            // Change button appearance to 'listening'
+            const originalHTML = speakButton.innerHTML;
+            speakButton.innerHTML = '<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+            speakButton.classList.add('bg-gray-500');
+            speakButton.classList.remove('hover:bg-gray-600');
+
+            const payload = {
+                contents: [{ parts: [{ text: text }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: TTS_VOICE } } } // Use Jarvis voice: Charon
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            const maxRetries = 3;
+            let currentDelay = 1000;
+            
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(ttsApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`TTS API HTTP error! Status: ${response.status}`);
+                    
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+
+                    if (!audioData) throw new Error("Invalid audio response structure from TTS API.");
+                    
+                    // The API returns raw signed PCM 16 bit audio data. Must convert to WAV.
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, 16000);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    audio = new Audio(audioUrl);
+                    
+                    // Update button appearance to 'playing'
+                    speakButton.innerHTML = '🎧';
+                    
+                    audio.play();
+
+                    audio.onended = () => {
+                        // Restore button on finish
+                        speakButton.classList.remove('bg-gray-500');
+                        speakButton.classList.add('hover:bg-gray-600');
+                        speakButton.innerHTML = originalHTML;
+                        speakButton.disabled = false;
+                        URL.revokeObjectURL(audioUrl);
+                    };
+                    
+                    return; // Success
+
+                } catch (error) {
+                    if (i < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, currentDelay));
+                        currentDelay *= 2;
+                    } else {
+                        // Restore button on error
+                        speakButton.textContent = '❌';
+                        speakButton.classList.remove('bg-gray-500');
+                        speakButton.classList.add('hover:bg-gray-600');
+                        speakButton.disabled = false;
+                        console.error('TTS synthesis failed after all retries:', error);
+                        throw error;
+                    }
+                }
+            }
+        }
+        
+        async function getSummarizedResponse(text, summarizeButton, targetBubble) {
+            summarizeButton.disabled = true;
+            const originalText = summarizeButton.textContent;
+            summarizeButton.textContent = '...';
+            summarizeButton.classList.add('bg-gray-500');
+            summarizeButton.classList.remove('hover:bg-gray-600');
+
+
+            const systemPrompt = "You are a concise summarization expert. Condense the following text into 3-4 short, punchy bulleted points, retaining all core information. Do not use any introductory or concluding phrases, just the bullet points.";
+            const userQuery = text;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            
+            try {
+                const response = await fetchWithBackoff(geminiApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const summary = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (summary) {
+                    // Prepend the summary to the original message's bubble for quick viewing
+                    const summaryElement = document.createElement('div');
+                    summaryElement.className = 'bg-yellow-800/50 p-2 mt-2 rounded-lg text-sm italic border-l-4 border-yellow-400';
+                    summaryElement.innerHTML = '💡 **Summary (Gemini):**<br>' + summary.replace(/\*/g, '').replace(/^- /gm, '• ');
+                    
+                    targetBubble.insertBefore(summaryElement, targetBubble.firstChild);
+                    
+                    // Disable and mark as summarized
+                    summarizeButton.textContent = '✅';
+                } else {
+                    summarizeButton.textContent = '❌';
+                    setTimeout(() => summarizeButton.textContent = originalText, 3000);
+                }
+
+            } catch (error) {
+                console.error('Gemini Summarization API Error:', error);
+                summarizeButton.textContent = '❌';
+                setTimeout(() => summarizeButton.textContent = originalText, 3000);
+            } finally {
+                summarizeButton.classList.remove('bg-gray-500');
+                summarizeButton.classList.add('hover:bg-gray-600');
+                if (summarizeButton.textContent === '...') { // Restore only if not already set to success/error
+                     summarizeButton.textContent = originalText;
+                     summarizeButton.disabled = false;
+                }
+            }
+        }
+
+        async function getGroundedAnswer() {
+            const userText = userInput.value.trim();
+            if (!userText) return;
+
+            showLoading(true, groundedSearchButton);
+            appendMessage('user', userText); // Append user query as normal
+            userInput.value = '';
+            
+            // Create a new bubble specifically for the Gemini Grounded Answer
+            const elements = appendMessage('assistant', 'Searching the web...', 'gemini-grounded');
+            const answerBubble = elements.bubble.querySelector('span'); // Target the span inside the custom bubble
+            
+            const payload = {
+                contents: [{ parts: [{ text: userText }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: { 
+                    parts: [{ text: "You are a highly factual assistant. Answer the user's question concisely based *only* on the search results provided. Include only the answer." }] 
+                },
+            };
+            
+            try {
+                const response = await fetchWithBackoff(geminiApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+                const text = candidate?.content?.parts?.[0]?.text || "Could not generate a grounded answer based on the available search results.";
+                
+                let sourceContent = '';
+                const groundingMetadata = candidate?.groundingMetadata;
+                if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                    const sources = groundingMetadata.groundingAttributions
+                        .map((attr, index) => ({
+                            uri: attr.web?.uri,
+                            title: attr.web?.title,
+                            index: index + 1
+                        }))
+                        .filter(source => source.uri && source.title);
+
+                    if (sources.length > 0) {
+                        sourceContent = '<p class="font-bold mt-2">Sources:</p>';
+                        sources.forEach(s => {
+                            sourceContent += `<p class="truncate"><a href="${s.uri}" target="_blank" class="text-blue-400 hover:text-blue-300">${s.title}</a></p>`;
+                        });
+                        appendMessage('citation', sourceContent);
+                    }
+                }
+
+                answerBubble.textContent = text;
+                
+                // --- Auto-Speak Grounded Answer ---
+                if (text.length > 0) {
+                    // Attach the click handler to the speak button before calling synthesizeSpeech
+                    elements.speakButton.addEventListener('click', async () => {
+                        await synthesizeSpeech(text, elements.speakButton);
+                    });
+                    await synthesizeSpeech(text, elements.speakButton);
+                }
+
+            } catch (error) {
+                console.error('Gemini Grounded Search API Error:', error);
+                answerBubble.textContent = `Error fetching grounded answer: ${error.message}.`;
+            } finally {
+                showLoading(false, groundedSearchButton);
+                // Summarize button is disabled for Grounded Answer since it's already concise
+                elements.summarizeButton.disabled = true; 
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+        }
+
+        async function fetchWithBackoff(url, options, maxRetries = 3) {
+            let currentDelay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (i < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, currentDelay));
+                        currentDelay *= 2;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+
+
+        // --- Ollama Chat Handler ---
+
+        async function sendMessage() {
+            const userText = userInput.value.trim();
+            if (!userText) return;
+
+            showLoading(true, sendButton);
+
+            const { model, url, systemPrompt } = currentConfig;
+
+            appendMessage('user', userText);
+            userInput.value = '';
+
+            const messages = [];
+
+            if (systemPrompt) {
+                messages.push({ role: 'system', content: systemPrompt });
+                appendMessage('system', `Persona set: "${systemPrompt.substring(0, 50)}..."`);
+            }
+            
+            messages.push({ role: 'user', content: userText });
+
+            const payload = { model: model, messages: messages, stream: true };
+            
+            const elements = appendMessage('assistant', '...');
+            const assistantBubble = elements.bubble;
+            const speakButton = elements.speakButton;
+            const summarizeButton = elements.summarizeButton;
+
+            assistantBubble.textContent = ''; 
+            let fullResponse = '';
+
+            try {
+                const response = await fetch(`${url}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorJson = await response.json();
+                    throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('{"model":')) {
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.message && data.message.content) {
+                                    fullResponse += data.message.content;
+                                    assistantBubble.textContent = fullResponse;
+                                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                                }
+                            } catch (e) {
+                                // console.warn('Skipping non-JSON line or partial JSON:', line);
+                            }
+                        } else if (line.startsWith('{"done":true')) {
+                            break; 
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Ollama API Error:', error);
+                
+                let detailedMessage = `Error: Could not connect to Ollama or fetch response. Check if Ollama is running and the model (${model}) is installed.`;
+                if (error.message.includes('Failed to fetch')) {
+                     detailedMessage += `\n\n**🛑 Connection Issue:** Ollama server is not running with CORS.`;
+                } else {
+                     detailedMessage += `\n\nDetails: ${error.message}`;
+                }
+
+                assistantBubble.textContent = detailedMessage;
+                errorMessage.textContent = `CRITICAL: Connection Error. See assistant's last message for details.`;
+                errorMessage.classList.remove('hidden');
+
+            } finally {
+                showLoading(false, sendButton);
+                
+                if (fullResponse.length > 0) {
+                    // Attach the click handler to the speak button
+                    speakButton.addEventListener('click', async () => {
+                        await synthesizeSpeech(fullResponse, speakButton);
+                    });
+                    
+                    // 1. Auto-speak the full response immediately upon completion
+                    try {
+                        await synthesizeSpeech(fullResponse, speakButton);
+                    } catch (e) {
+                        console.error("TTS playback failed:", e);
+                        // The button will already be in an error state from synthesizeSpeech
+                    }
+                    
+                    // 2. Enable summarize button
+                    summarizeButton.disabled = false;
+                    summarizeButton.addEventListener('click', async () => {
+                        await getSummarizedResponse(fullResponse, summarizeButton, assistantBubble);
+                    });
+                }
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+        }
+
+        // --- Event Listeners and Initialization ---
+
+        userInput.addEventListener('input', () => {
+            const isInputEmpty = userInput.value.trim() === '';
+            sendButton.disabled = isInputEmpty || isStreaming;
+            groundedSearchButton.disabled = isInputEmpty || isStreaming;
+        });
+        
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && userInput.value.trim() !== '' && !isStreaming) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        sendButton.addEventListener('click', sendMessage);
+        groundedSearchButton.addEventListener('click', getGroundedAnswer);
+
+        // Initial check to enable the button if input is pre-filled
+        const isInputEmpty = userInput.value.trim() === '';
+        sendButton.disabled = isInputEmpty;
+        groundedSearchButton.disabled = isInputEmpty;
+
+    </script>
+</body>
+</html>
