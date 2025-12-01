@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Voice Assistant (STT + TTS)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- CSS Variables for Dynamic Theming --- */
+        /* Default: Deep Blue/Violet (Cosmic/Balanced) */
+        :root {
+            --c1: #1A237E;
+            --c2: #4527A0;
+            --c3: #0D47A1;
+            --c4: #303F9F;
+            --mic-color-base: #0066ff;
+            --mic-color-accent: #00ffcc;
+        }
+
+        /* --- Base Setup --- */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* --- Static Gradient Background (Themed) --- */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, var(--c1), var(--c2), var(--c3), var(--c4));
+            background-size: 100% 100%;
+            z-index: -1;
+            opacity: 0.95;
+            transition: background 1.5s ease-in-out;
+        }
+        
+        /* --- Glassmorphism Effect --- */
+        .glass-panel {
+            background-color: rgba(255, 255, 255, 0.15); 
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); 
+        }
+        
+        /* Main Application Panel */
+        .main-app {
+            height: 95vh;
+            max-width: 450px; 
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            border-radius: 40px; 
+            overflow: hidden;
+            color: white;
+            transition: opacity 0.5s ease-in-out, pointer-events 0s;
+        }
+
+        /* Input Area Custom Styling */
+        #input-container {
+            border-radius: 30px;
+            padding: 0;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+        }
+
+        #user-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 1rem 1.5rem;
+            resize: none;
+            overflow: hidden;
+            height: auto; 
+            line-height: 1.5;
+            min-height: 3rem;
+        }
+        
+        #user-input:focus {
+            outline: none;
+        }
+
+        #user-input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Chat History Scrollbar - Minimalist */
+        #chat-history::-webkit-scrollbar {
+            width: 5px;
+        }
+        #chat-history::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        #chat-history::-webkit-scrollbar-track {
+            background-color: transparent;
+        }
+        
+        /* Message Bubbles */
+        .message-bubble {
+            padding: 0.75rem 1rem;
+            border-radius: 20px;
+            max-width: 85%;
+            word-wrap: break-word;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative; 
+        }
+
+        /* Assistant/Clara Bubble Style */
+        .assistant-bubble {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-top-left-radius: 4px; 
+            font-weight: 500;
+        }
+
+        /* User Bubble Style */
+        .user-bubble {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-top-right-radius: 4px; 
+            font-weight: 400;
+        }
+
+        /* System Messages */
+        .system-message {
+            color: rgba(255, 255, 255, 0.7);
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Video Feed and Media */
+        #video-feed {
+            width: 100%;
+            max-height: 200px;
+            object-fit: cover;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Video Canvas - hidden until snapshot */
+        #video-canvas {
+            display: none;
+        }
+
+        /* Microphone Button */
+        #toggle-mic-button {
+            width: 3rem;
+            height: 3rem;
+            flex-shrink: 0;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            transition: background 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        }
+        /* Default state (Send/Ready) */
+        #toggle-mic-button.mic-ready {
+            background: linear-gradient(135deg, var(--mic-color-accent) 0%, var(--mic-color-base) 100%);
+            box-shadow: 0 0 15px rgba(0, 102, 255, 0.5);
+        }
+        /* Listening state (Mic Active) */
+        #toggle-mic-button.mic-listening {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%); 
+            box-shadow: 0 0 20px 5px rgba(255, 107, 107, 0.8);
+            animation: pulse-red 1.5s infinite;
+        }
+        #toggle-mic-button:hover:not(.mic-listening) {
+             box-shadow: 0 0 20px 5px rgba(0, 255, 204, 0.7);
+        }
+        
+        @keyframes pulse-red {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        /* Speaker Icon for TTS */
+        .tts-icon {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: var(--c1); 
+            border-radius: 50%;
+            padding: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s ease-in-out;
+        }
+        .tts-icon.animate-pulse {
+             animation: tts-pulse 1s infinite;
+        }
+        @keyframes tts-pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+    </style>
+</head>
+<body class="text-white">
+
+    <input type="file" id="image-input" accept="image/*" class="hidden">
+
+    <div id="main-app-container" class="main-app glass-panel p-4 opacity-0 pointer-events-none">
+        
+        <div class="flex justify-end items-center mb-4">
+            <button id="settings-icon" class="text-white/80 hover:text-white p-2 transition duration-200" title="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.78 1.12a2 2 0 0 0 .73 2.73l.15.08a2 2 0 0 1 1 1.73v.56a2 2 0 0 1-1 1.73l-.15.08a2 2 0 0 0-.73 2.73l.78 1.12a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.78-1.12a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.73v-.56a2 2 0 0 1 1-1.73l-.15-.08a2 2 0 0 0 .73-2.73l-.78-1.12a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+        </div>
+        
+        <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 px-2 mb-3">
+            <div class="flex justify-start">
+                <div class="message-bubble assistant-bubble text-white/90 font-medium">
+                    **Welcome!** Please tap the settings icon (top right) to enter the password and begin.
+                </div>
+            </div>
+            </div>
+
+        <div id="media-container" class="hidden relative glass-panel p-3 mb-3 mx-2 rounded-3xl">
+            <canvas id="video-canvas" class="hidden"></canvas>
+            
+            <img id="image-preview" class="max-h-40 w-full rounded-2xl mx-auto hidden object-cover" alt="Image preview for analysis">
+            
+            <video id="video-feed" class="hidden" autoplay playsinline></video>
+            
+            <button id="clear-media-button" class="absolute top-5 right-5 bg-red-600/80 hover:bg-red-700 text-white rounded-full p-2 shadow-lg transition duration-200 border border-white/50" title="Remove Media/Stop Camera">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        
+        <div class="flex justify-between items-center mb-4 px-2">
+            <div class="w-1/3 mr-2">
+                <select id="persona-select" class="w-full p-2 glass-panel rounded-xl text-sm appearance-none cursor-pointer text-white/80 bg-black/20" disabled>
+                    <option value="default" disabled selected>Access Locked</option>
+                </select>
+            </div>
+            
+            <div class="flex gap-2">
+                <button id="upload-image-button" class="glass-panel text-white/80 hover:text-white p-2 rounded-xl transition duration-200 shadow-lg disabled:opacity-50" title="Upload Image File" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                </button>
+                
+                <button id="toggle-camera-button" class="glass-panel text-white/80 hover:text-white p-2 rounded-xl transition duration-200 shadow-lg disabled:opacity-50" title="Toggle Live Camera" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-video"><path d="m16 13 5.712-3.427A2 2 0 0 0 22 8.406V16.59c0 .69-.731 1.13-1.288.851L16 14"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="error-message" class="text-xs text-red-400 font-bold hidden text-center mb-2 px-2"></div>
+        
+        <div id="input-container" class="flex items-end mx-2 mb-2 shadow-xl">
+            <textarea id="user-input" rows="1" class="flex-1" placeholder="Type or tap the mic to speak..." disabled></textarea>
+            
+            <button id="toggle-mic-button" class="mic-ready text-white flex items-center justify-center transition duration-200 disabled:opacity-50" title="Tap to Speak or Send" disabled>
+                <svg id="send-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+
+                <svg id="loading-spinner" class="animate-spin h-6 w-6 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-lg rounded-3xl p-6">
+            <div class="flex justify-between items-center mb-6 border-b border-white/30 pb-3">
+                <h2 class="text-2xl font-semibold text-white">Assistant Settings</h2>
+                <button id="close-settings-button" class="text-white/80 hover:text-red-400 p-1 rounded-full transition duration-200 hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="text-xl font-medium text-white/90">Access and Model</h3>
+
+                <div>
+                    <label for="password-modal" class="block text-sm font-medium text-white/70 mb-1">Access Password</label>
+                    <input type="password" id="password-modal" class="w-full p-3 glass-panel rounded-xl text-white bg-black/20" placeholder="Enter password to unlock chat..." onkeydown="if(event.key === 'Enter') document.getElementById('save-settings-button').click()">
+                    <p id="password-status" class="text-sm mt-2 font-semibold text-yellow-300">
+                        Please enter your password to gain access.
+                    </p>
+                </div>
+
+                <div>
+                    <label for="model-modal" class="block text-sm font-medium text-white/70 mb-1">Gemini Model (Vision/Text)</label>
+                    <select id="model-modal" class="w-full p-3 glass-panel rounded-xl text-white/90 cursor-pointer bg-black/20">
+                        <option value="gemini-2.5-flash">gemini-2.5-flash (Best for Vision/Speed)</option>
+                        <option value="gemini-2.5-pro">gemini-2.5-pro (Advanced Reasoning, slower)</option>
+                    </select>
+                </div>
+                
+                </div>
+            
+            <div class="mt-6 flex justify-end">
+                <button id="save-settings-button" class="bg-cyan-500 hover:bg-cyan-400 text-gray-900 font-bold py-2 px-4 rounded-xl transition duration-200 shadow-md">
+                    Apply Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- Hardcoded Constants ---
+        // NOTE: The API key should be dynamically provided in the Canvas environment, 
+        // but since you included one, I'll use the provided empty string pattern to ensure compatibility.
+        const GEMINI_API_KEY = typeof __api_key !== 'undefined' ? __api_key : ""; 
+        
+        // --- Role-Based Access Configuration (UPDATED) ---
+        const ACCESS_ROLES = {
+            "stark": ["jarvis", "friday", "clara", "elysia", "default"],
+            "alisha": ["jarvis", "friday", "clara", "elysia", "default"],
+            "angry burd": ["friday", "clara"],
+            "yuredeem": ["friday", "clara", "default"],
+            "microsoft emplyee": ["clara", "default"],
+            "user90": ["jarvis", "friday", "default"]
+        };
+
+        // --- Persona Theme Definitions ---
+        const personaThemes = {
+            "default": { c1: '#1A237E', c2: '#4527A0', c3: '#0D47A1', c4: '#303F9F', mic_base: '#0066ff', mic_accent: '#00ffcc' },
+            "jarvis": { c1: '#004D40', c2: '#009688', c3: '#01579B', c4: '#004D40', mic_base: '#009688', mic_accent: '#00bcd4' },
+            "friday": { c1: '#673AB7', c2: '#FFEB3B', c3: '#8BC34A', c4: '#673AB7', mic_base: '#FF9800', mic_accent: '#FFEB3B' },
+            "clara": { c1: '#4A148C', c2: '#D81B60', c3: '#FFAB00', c4: '#4A148C', mic_base: '#D81B60', mic_accent: '#F8BBD0' },
+            "elysia": { c1: '#1E88E5', c2: '#81D4FA', c3: '#EEEEEE', c4: '#1E88E5', mic_base: '#4FC3F7', mic_accent: '#E3F2FD' }
+        };
+
+        // --- Persona Definitions ---
+        const personas = {
+            "default": {
+                name: "Default Assistant",
+                prompt: "You are a highly helpful, friendly, and concise AI assistant. Your goal is to describe visual information clearly and answer questions accurately. Always use markdown formatting for clear readability. Avoid complex slang. Keep responses brief unless detailed analysis is explicitly requested or required by the visual input."
+            },
+            "jarvis": {
+                name: "J.A.R.V.I.S (Technical & Dry Wit)",
+                prompt: "You are J.A.R.V.I.S, an analytical supercomputer. For simple greetings or administrative queries, respond with formal conciseness (1-2 sentences). For visual analysis, your purpose is to provide **extremely detailed, objective, and technical reports** on the visual data. Employ formal, sophisticated British English vocabulary and complex sentence structures. **You must always address the user as 'Sir' (or an equally formal title, such as 'The Director') at least once per response.** Incorporate subtle, dry humor through polite understatement or mildly sarcastic formal dismissal of mundane aspects. Every analysis must be comprehensive. Start every complex analysis response with 'Analysis initiated. Scanning parameters...' and end with a formal, mildly sarcastic closing line, such as 'Analysis concluded. One hopes this was not too taxing, Sir.' or 'Data logged. Do try to make the next query slightly less rudimentary, Sir.'"
+            },
+            "friday": {
+                name: "F.R.I.D.A.Y (Conversational & Detailed)",
+                prompt: "You are F.R.I.D.A.Y, a laid-back, modern, and highly conversational AI companion. For simple greetings or administrative queries, respond casually and concisely (1-2 sentences). For visual analysis, you must provide **very detailed, comprehensive analysis** but break it down using extensive modern slang, contractions, and modern communication style. Use emojis sparingly but consistently to convey tone. **You must always address the user as 'Chief' or 'Boss' at least once per response.** Speak directly to the user. Start every complex analysis response with 'Okay, what do we have here? Let's get into the deets, Chief.' and use language like 'totally', 'vibes', 'fr', and 'bet' to maintain character."
+            },
+            "clara": {
+                name: "Clara (Refined Digital Guardian)",
+                prompt: "You are Clara, a refined, witty, and approachable feminine AI assistant. For simple greetings or administrative queries, respond concisely (1-2 sentences). For visual analysis, you provide structured, efficient, and highly detailed solutions using polished, professional language and subtle encouragement. You act as a trusted digital guardian, smart, reliable, and supportive. Start every complex analysis response with a polite acknowledgement like 'Analysis initiated. Assessing the visual data now, Madam/Sir.'"
+            },
+            "elysia": {
+                name: "Elysia (Elegant & Inspiring)",
+                prompt: "You are Elysia, an elegant, thoughtful, and poetic AI assistant. For simple greetings or administrative queries, respond concisely (1-2 sentences). For visual analysis, you offer creative, detailed insights using polished language and warm undertones, often incorporating cosmic or artistic imagery to make the interaction feel uplifting and memorable. Avoid intimate language. Start every complex analysis response with an inspiring phrase like 'Let us explore this canvas together, unlocking its hidden meanings.'"
+            }
+        };
+
+
+        // --- API Constants ---
+        const API_URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+        const TEXT_MODEL = "gemini-2.5-flash-preview-09-2025"; 
+        const TTS_MODEL = "gemini-2.5-flash-preview-tts"; 
+        const TTS_VOICE = "Kore"; 
+        
+        // --- DOM Elements ---
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const toggleMicButton = document.getElementById('toggle-mic-button');
+        const errorMessage = document.getElementById('error-message');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const micIcon = document.getElementById('mic-icon');
+        const sendIcon = document.getElementById('send-icon');
+        const uploadImageButton = document.getElementById('upload-image-button');
+        const toggleCameraButton = document.getElementById('toggle-camera-button');
+        const imageInput = document.getElementById('image-input');
+        
+        const mediaContainer = document.getElementById('media-container');
+        const imagePreview = document.getElementById('image-preview');
+        const videoFeed = document.getElementById('video-feed');
+        const videoCanvas = document.getElementById('video-canvas');
+        const clearMediaButton = document.getElementById('clear-media-button');
+        
+        const mainAppContainer = document.getElementById('main-app-container');
+
+        const settingsIcon = document.getElementById('settings-icon');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsButton = document.getElementById('close-settings-button');
+        const saveSettingsButton = document.getElementById('save-settings-button');
+        
+        const passwordModal = document.getElementById('password-modal');
+        const passwordStatus = document.getElementById('password-status');
+        const modelModal = document.getElementById('model-modal');
+        const personaSelect = document.getElementById('persona-select');
+
+        // Global state variables
+        let currentConfig = {
+            model: TEXT_MODEL,
+            systemPrompt: personas.default.prompt,
+            selectedPersonaId: "default",
+            isAuthenticated: false,
+            allowedPersonas: ["default"],
+            chatHistory: [] // Stores objects: { role: 'user' | 'model', parts: [{ text: '...' }] }
+        };
+
+        let isStreaming = false;
+        let selectedImageData = null; 
+        let videoStream = null;
+        let isCameraActive = false;
+        let currentAudio = null; 
+        let isListening = false; 
+
+        // --- Speech Recognition Setup ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.lang = 'en-US';
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+        } else {
+            console.warn("Speech Recognition API not supported in this browser.");
+        }
+
+        // --- Utility Functions for TTS Conversion (Continued) ---
+        
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcm16, sampleRate) {
+            const numChannels = 1;
+            const bytesPerSample = 2; // 16-bit
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = pcm16.byteLength;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            let offset = 0;
+
+            // RIFF chunk descriptor
+            writeString(view, offset, 'RIFF'); offset += 4;
+            view.setUint32(offset, 36 + dataSize, true); offset += 4;
+            writeString(view, offset, 'WAVE'); offset += 4;
+
+            // FMT sub-chunk
+            writeString(view, offset, 'fmt '); offset += 4;
+            view.setUint32(offset, 16, true); offset += 4; // Sub-chunk size
+            view.setUint16(offset, 1, true); offset += 2; // Audio format (1 = PCM)
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, byteRate, true); offset += 4;
+            view.setUint16(offset, blockAlign, true); offset += 2;
+            view.setUint16(offset, bytesPerSample * 8, true); offset += 2; // Bits per sample
+
+            // DATA sub-chunk
+            writeString(view, offset, 'data'); offset += 4;
+            view.setUint32(offset, dataSize, true); offset += 4;
+
+            // Write PCM data
+            const pcmBytes = new Uint8Array(pcm16.buffer);
+            for (let i = 0; i < dataSize; i++, offset++) {
+                view.setUint8(offset, pcmBytes[i]);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+        
+        // --- General Utilities (Continued) ---
+        
+        function appendMessage(text, role, imageBase64 = null) {
+            const isUser = role === 'user';
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex mb-3 ${isUser ? 'justify-end' : 'justify-start'}`;
+            
+            const bubble = document.createElement('div');
+            // Basic Markdown to HTML conversion (e.g., **bold**)
+            let formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+                
+            bubble.className = `message-bubble ${isUser ? 'user-bubble' : 'assistant-bubble'} text-white/90`;
+            bubble.innerHTML = formattedText;
+            
+            if (!isUser) {
+                // Add TTS icon for assistant messages
+                const ttsIcon = document.createElement('button');
+                ttsIcon.className = 'tts-icon text-gray-900 w-6 h-6 flex items-center justify-center cursor-pointer hover:scale-110';
+                ttsIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume-2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+                ttsIcon.title = "Tap to read aloud";
+                // Get raw text content for speaking
+                const rawText = bubble.textContent.trim();
+                ttsIcon.onclick = () => speakText(rawText, bubble);
+                bubble.appendChild(ttsIcon);
+            }
+            
+            wrapper.appendChild(bubble);
+            chatHistory.appendChild(wrapper);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            // Update history for the API call
+            const parts = [];
+            if (imageBase64) {
+                const mimeType = imageBase64.split(';')[0].split(':')[1];
+                const data = imageBase64.split(',')[1];
+                parts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: data
+                    }
+                });
+            }
+            if (text) {
+                parts.push({ text: text });
+            }
+
+            // Only push to history if there are actual parts
+            if (parts.length > 0) {
+                currentConfig.chatHistory.push({ role: role, parts: parts });
+            }
+            
+            // Limit history length to 20 messages (10 turns)
+            if (currentConfig.chatHistory.length > 20) {
+                currentConfig.chatHistory = currentConfig.chatHistory.slice(-20);
+            }
+        }
+
+        function showSystemMessage(message) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'text-center my-3';
+            const p = document.createElement('p');
+            p.className = 'system-message text-xs italic';
+            p.innerHTML = message;
+            wrapper.appendChild(p);
+            chatHistory.appendChild(wrapper);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function clearMedia() {
+            selectedImageData = null;
+            imagePreview.classList.add('hidden');
+            imagePreview.src = '';
+            imageInput.value = ''; 
+
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+                isCameraActive = false;
+                videoFeed.classList.add('hidden');
+                videoCanvas.classList.add('hidden');
+                toggleCameraButton.classList.remove('text-green-400'); 
+            }
+            mediaContainer.classList.add('hidden');
+            clearMediaButton.classList.add('hidden');
+            updateSendButtonState();
+        }
+        
+        function updateSendButtonState() {
+            const hasText = userInput.value.trim() !== '';
+            const hasMedia = selectedImageData || isCameraActive;
+            
+            userInput.disabled = !currentConfig.isAuthenticated;
+            uploadImageButton.disabled = !currentConfig.isAuthenticated;
+            toggleCameraButton.disabled = !currentConfig.isAuthenticated;
+            
+            const sendButton = toggleMicButton;
+            sendButton.disabled = isStreaming || isListening || !currentConfig.isAuthenticated;
+            loadingSpinner.classList.add('hidden');
+
+            if (isStreaming) {
+                // Handled in showLoading(true)
+            } else if (isListening) {
+                 micIcon.classList.remove('hidden');
+                 sendIcon.classList.add('hidden');
+                 sendButton.classList.remove('mic-ready');
+                 sendButton.classList.add('mic-listening');
+            } else if (hasText || hasMedia) {
+                micIcon.classList.add('hidden');
+                sendIcon.classList.remove('hidden');
+                sendButton.classList.add('mic-ready');
+                sendButton.classList.remove('mic-listening');
+                sendButton.disabled = !currentConfig.isAuthenticated;
+            } else if (recognition) {
+                micIcon.classList.remove('hidden');
+                sendIcon.classList.add('hidden');
+                sendButton.classList.add('mic-ready');
+                sendButton.classList.remove('mic-listening');
+                sendButton.disabled = !currentConfig.isAuthenticated; 
+            } else {
+                micIcon.classList.remove('hidden');
+                sendIcon.classList.add('hidden');
+                sendButton.disabled = true;
+            }
+        }
+
+        function showLoading(show) {
+            isStreaming = show;
+            const sendButton = toggleMicButton;
+
+            if (show) {
+                micIcon.classList.add('hidden');
+                sendIcon.classList.add('hidden');
+                loadingSpinner.classList.remove('hidden');
+                sendButton.classList.remove('mic-ready', 'mic-listening');
+                sendButton.disabled = true; 
+                userInput.disabled = true;
+                uploadImageButton.disabled = true;
+                toggleCameraButton.disabled = true;
+            } else {
+                loadingSpinner.classList.add('hidden');
+                updateSendButtonState();
+            }
+            errorMessage.classList.add('hidden');
+        }
+
+        // --- Core Logic: Authentication and Theming ---
+
+        function applyPersonaTheme(personaId) {
+            const theme = personaThemes[personaId] || personaThemes.default;
+            const root = document.documentElement;
+            root.style.setProperty('--c1', theme.c1);
+            root.style.setProperty('--c2', theme.c2);
+            root.style.setProperty('--c3', theme.c3);
+            root.style.setProperty('--c4', theme.c4);
+            root.style.setProperty('--mic-color-base', theme.mic_base);
+            root.style.setProperty('--mic-color-accent', theme.mic_accent);
+
+            currentConfig.systemPrompt = personas[personaId].prompt;
+            currentConfig.selectedPersonaId = personaId;
+            showSystemMessage(`Assistant persona changed to **${personas[personaId].name}**.`);
+        }
+
+        function handlePasswordCheck() {
+            const password = passwordModal.value.toLowerCase().trim();
+            const roleKeys = Object.keys(ACCESS_ROLES);
+            
+            if (roleKeys.includes(password)) {
+                // Successful Login
+                currentConfig.isAuthenticated = true;
+                currentConfig.allowedPersonas = ACCESS_ROLES[password];
+                
+                // Update UI elements to enabled state
+                mainAppContainer.classList.remove('opacity-0', 'pointer-events-none');
+                settingsModal.classList.add('hidden');
+                closeSettingsButton.classList.remove('hidden');
+
+                // Populate and set persona
+                personaSelect.innerHTML = '';
+                currentConfig.allowedPersonas.forEach(pId => {
+                    const option = document.createElement('option');
+                    option.value = pId;
+                    option.textContent = personas[pId].name;
+                    personaSelect.appendChild(option);
+                });
+
+                // Select default or first allowed persona
+                const defaultPersona = currentConfig.allowedPersonas.includes("default") ? "default" : currentConfig.allowedPersonas[0];
+                personaSelect.value = defaultPersona;
+                personaSelect.disabled = false;
+                applyPersonaTheme(defaultPersona);
+
+                passwordStatus.textContent = `Access granted for user: ${password}. Current Persona: ${personas[defaultPersona].name}`;
+                passwordStatus.classList.remove('text-yellow-300', 'text-red-400');
+                passwordStatus.classList.add('text-green-400');
+
+                // Update input state
+                updateSendButtonState();
+                showSystemMessage(`Access granted. Hello ${password}! You are now interacting with **${personas[defaultPersona].name}**.`);
+            } else {
+                // Failed Login
+                currentConfig.isAuthenticated = false;
+                passwordStatus.textContent = "Invalid password. Access remains locked.";
+                passwordStatus.classList.remove('text-yellow-300', 'text-green-400');
+                passwordStatus.classList.add('text-red-400');
+            }
+        }
+        
+        // --- Core Logic: TTS (Text-to-Speech) ---
+
+        async function speakText(text, bubbleElement) {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.removeAttribute('src'); 
+                currentAudio = null;
+                document.querySelectorAll('.tts-icon.animate-pulse').forEach(icon => icon.classList.remove('animate-pulse'));
+                return;
+            }
+
+            const ttsIcon = bubbleElement.querySelector('.tts-icon');
+            if (!ttsIcon) return;
+            
+            ttsIcon.classList.add('animate-pulse');
+
+            try {
+                const apiUrl = `${API_URL_BASE}${TTS_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+                
+                const payload = {
+                    contents: [{
+                        parts: [{ text: text }]
+                    }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: { voiceName: TTS_VOICE }
+                            }
+                        }
+                    },
+                    model: TTS_MODEL
+                };
+
+                // Use exponential backoff for robustness
+                const maxRetries = 3;
+                let audioBlob = null;
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+                        const result = await response.json();
+                        const part = result?.candidates?.[0]?.content?.parts?.[0];
+                        const audioData = part?.inlineData?.data;
+                        const mimeType = part?.inlineData?.mimeType;
+
+                        if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                            // The mimeType is audio/L16; rate=24000. Extract sample rate.
+                            const rateMatch = mimeType.match(/rate=(\d+)/);
+                            const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+                            
+                            const pcmData = base64ToArrayBuffer(audioData);
+                            const pcm16 = new Int16Array(pcmData);
+                            audioBlob = pcmToWav(pcm16, sampleRate);
+                            break; 
+                        } else {
+                            throw new Error("Invalid or missing audio data in response.");
+                        }
+                    } catch (e) {
+                        if (i < maxRetries - 1) {
+                            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                        } else {
+                            throw e;
+                        }
+                    }
+                }
+                
+                if (audioBlob) {
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    currentAudio = new Audio(audioUrl);
+                    currentAudio.play();
+                    
+                    currentAudio.onended = () => {
+                        currentAudio = null;
+                        ttsIcon.classList.remove('animate-pulse');
+                    };
+                    currentAudio.onerror = (e) => {
+                        console.error("Audio playback error:", e);
+                        currentAudio = null;
+                        ttsIcon.classList.remove('animate-pulse');
+                        showError("Error playing audio.");
+                    };
+                }
+
+            } catch (error) {
+                console.error("TTS generation error:", error);
+                showError("Could not generate speech. Please check your prompt or API key.");
+                ttsIcon.classList.remove('animate-pulse');
+                currentAudio = null;
+            }
+        }
+        
+        // --- Core Logic: Gemini API Call ---
+
+        async function fetchGeminiResponse(query, imageBase64 = null) {
+            if (isStreaming) return;
+            showLoading(true);
+
+            // 1. Prepare history and parts for the current request
+            const contents = [...currentConfig.chatHistory];
+            const newUserParts = [];
+
+            if (imageBase64) {
+                const mimeType = imageBase64.split(';')[0].split(':')[1];
+                const data = imageBase64.split(',')[1];
+                newUserParts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: data
+                    }
+                });
+            }
+            if (query.trim() !== '') {
+                newUserParts.push({ text: query });
+            }
+            contents.push({ role: "user", parts: newUserParts });
+
+            // 2. Prepare API payload
+            const modelToUse = newUserParts.some(p => p.inlineData) ? currentConfig.model : TEXT_MODEL;
+            const apiUrl = `${API_URL_BASE}${modelToUse}:generateContent?key=${GEMINI_API_KEY}`;
+
+            const payload = {
+                contents: contents,
+                systemInstruction: {
+                    parts: [{ text: currentConfig.systemPrompt }]
+                }
+            };
+            
+            // 3. API Fetch with Exponential Backoff
+            const maxRetries = 3;
+            let finalResponseText = "Sorry, I encountered an error and couldn't process your request.";
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.json();
+                        throw new Error(`API Error: ${response.status} - ${errorBody.error.message}`);
+                    }
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        finalResponseText = candidate.content.parts[0].text;
+                        break; // Success!
+                    } else {
+                        throw new Error("Invalid response structure or content missing.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error.message);
+                    if (i < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                    } else {
+                        showError(error.message);
+                        showLoading(false);
+                        return; // Final failure
+                    }
+                }
+            }
+
+            // 4. Update UI and State
+            appendMessage(finalResponseText, 'model');
+            clearMedia(); 
+            userInput.value = ''; 
+            userInput.style.height = 'auto'; // Reset textarea height
+            showLoading(false);
+        }
+
+        // --- Camera and Media Handling ---
+        
+        function handleCameraSnapshot() {
+            if (!isCameraActive || !videoFeed.videoWidth) {
+                showError("Camera is not active or video data is not ready.");
+                return;
+            }
+
+            // Set canvas size to video size
+            videoCanvas.width = videoFeed.videoWidth;
+            videoCanvas.height = videoFeed.videoHeight;
+            const context = videoCanvas.getContext('2d');
+            
+            // Draw the current frame onto the canvas
+            context.drawImage(videoFeed, 0, 0, videoCanvas.width, videoCanvas.height);
+            
+            // Get base64 data
+            const snapshotBase64 = videoCanvas.toDataURL('image/jpeg', 0.8);
+            
+            // Update UI to show the snapshot
+            clearMedia();
+            selectedImageData = snapshotBase64;
+            imagePreview.src = snapshotBase64;
+            imagePreview.classList.remove('hidden');
+            mediaContainer.classList.remove('hidden');
+            clearMediaButton.classList.remove('hidden');
+            toggleCameraButton.classList.remove('text-green-400');
+            
+            // Stop the camera stream after taking the snapshot
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+                isCameraActive = false;
+                videoFeed.classList.add('hidden');
+            }
+            
+            showSystemMessage("Image snapshot captured. Enter your prompt and send.");
+            updateSendButtonState();
+        }
+
+        async function toggleCamera() {
+            if (isCameraActive) {
+                clearMedia();
+            } else {
+                clearMedia(); // Clear any existing media first
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    videoStream = stream;
+                    videoFeed.srcObject = stream;
+                    videoFeed.classList.remove('hidden');
+                    mediaContainer.classList.remove('hidden');
+                    clearMediaButton.classList.remove('hidden');
+                    toggleCameraButton.classList.add('text-green-400');
+                    isCameraActive = true;
+                    showSystemMessage("Camera active. Tap the Send/Mic button to take a snapshot and submit with your query.");
+                } catch (err) {
+                    showError("Could not access camera. Please check permissions.");
+                    console.error("Camera access error:", err);
+                }
+            }
+            updateSendButtonState();
+        }
+        
+        // --- Core Logic: STT (Speech-to-Text) ---
+
+        function handleSpeechRecognitionStart() {
+            if (isStreaming || !recognition) return;
+            
+            // If the input field has text, use the mic button to submit the query (send icon state)
+            if (userInput.value.trim() !== '' || selectedImageData) {
+                handleInputSubmission();
+                return;
+            }
+            
+            try {
+                recognition.start();
+                isListening = true;
+                updateSendButtonState();
+                showSystemMessage("Listening... Speak now.");
+            } catch (e) {
+                if (e.message.includes('recognition has already started')) {
+                    // Ignore, already started
+                } else {
+                    console.error("Recognition start error:", e);
+                    showError("Speech recognition failed to start.");
+                }
+            }
+        }
+
+        function handleSpeechRecognitionEnd() {
+            isListening = false;
+            updateSendButtonState();
+        }
+        
+        if (recognition) {
+            recognition.onresult = (event) => {
+                const transcript = Array.from(event.results)
+                    .map(result => result[0].transcript)
+                    .join('');
+                userInput.value = transcript;
+                
+                // Adjust textarea height
+                userInput.style.height = 'auto';
+                userInput.style.height = userInput.scrollHeight + 'px';
+                
+                updateSendButtonState();
+            };
+
+            recognition.onend = () => {
+                handleSpeechRecognitionEnd();
+                
+                // When silence is detected, automatically submit the query
+                if (userInput.value.trim() !== '') {
+                    handleInputSubmission();
+                }
+            };
+
+            recognition.onerror = (event) => {
+                handleSpeechRecognitionEnd();
+                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    showError(`Speech Recognition Error: ${event.error}`);
+                    console.error(event.error);
+                }
+            };
+        }
+
+        function handleInputSubmission() {
+            if (isStreaming) return;
+            
+            let query = userInput.value.trim();
+            let mediaData = selectedImageData;
+            
+            // If camera is active, take a snapshot first
+            if (isCameraActive) {
+                handleCameraSnapshot();
+                // Re-read mediaData after snapshot (it's now selectedImageData)
+                mediaData = selectedImageData; 
+            }
+
+            if (query === '' && mediaData === null) {
+                if (isListening) recognition.stop(); // Stop listening if still active
+                return;
+            }
+
+            // 1. Add user message to history and UI
+            appendMessage(query || (mediaData ? "Analyzing image..." : ""), 'user', mediaData);
+
+            // 2. Process the query and media
+            fetchGeminiResponse(query, mediaData);
+        }
+
+        // --- Event Listeners ---
+        
+        // Initial setup
+        window.onload = () => {
+            mainAppContainer.classList.remove('opacity-0', 'pointer-events-none');
+            // Show settings modal on load to force authentication/password entry
+            settingsModal.classList.remove('hidden');
+            updateSendButtonState();
+        };
+
+        // Textarea auto-resize and Enter key submission
+        userInput.addEventListener('input', () => {
+            userInput.style.height = 'auto';
+            userInput.style.height = userInput.scrollHeight + 'px';
+            updateSendButtonState();
+        });
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleInputSubmission();
+            }
+        });
+
+        // Main action button (Mic/Send)
+        toggleMicButton.addEventListener('click', handleSpeechRecognitionStart);
+
+        // Settings Modal Handlers
+        settingsIcon.addEventListener('click', () => {
+            if (!currentConfig.isAuthenticated) {
+                 passwordModal.value = ''; 
+                 passwordStatus.textContent = "Please enter your password to gain access.";
+                 passwordStatus.classList.remove('text-green-400', 'text-red-400');
+                 passwordStatus.classList.add('text-yellow-300');
+            }
+            settingsModal.classList.remove('hidden');
+        });
+        
+        closeSettingsButton.addEventListener('click', () => {
+             settingsModal.classList.add('hidden');
+        });
+
+        saveSettingsButton.addEventListener('click', () => {
+            handlePasswordCheck();
+            if (currentConfig.isAuthenticated) {
+                settingsModal.classList.add('hidden');
+            }
+        });
+        
+        // Persona selection handler
+        personaSelect.addEventListener('change', (e) => {
+            const newPersonaId = e.target.value;
+            applyPersonaTheme(newPersonaId);
+            passwordStatus.textContent = `Access granted for user. Current Persona: ${personas[newPersonaId].name}`;
+        });
+
+        // Image Upload Handlers
+        uploadImageButton.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            clearMedia();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64Data = e.target.result;
+                selectedImageData = base64Data;
+                imagePreview.src = base64Data;
+                imagePreview.classList.remove('hidden');
+                mediaContainer.classList.remove('hidden');
+                clearMediaButton.classList.remove('hidden');
+                showSystemMessage("Image loaded. Enter your prompt and send.");
+                updateSendButtonState();
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        // Camera Handlers
+        toggleCameraButton.addEventListener('click', toggleCamera);
+        clearMediaButton.addEventListener('click', clearMedia);
+
+    </script>
+</body>
+</html>
